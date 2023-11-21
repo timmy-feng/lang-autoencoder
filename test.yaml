@@ -1,0 +1,21 @@
+lang:
+  input:
+    vocab_size: 2048
+    max_seq_len: 128
+  output:
+    vocab_size: 2048
+    max_seq_len: 128
+dataset:
+  train: ./datasets/starwars/ep4/train.pt
+  val: ./datasets/starwars/ep4/val.pt
+model:
+  d_model: 16
+  nhead: 2
+  num_encoder_layers: 1
+  num_decoder_layers: 1
+  dim_feedforward: 32
+  temperature: 1.0
+train:
+  lr: 0.001
+  batch_size: 32
+  epochs: 10
