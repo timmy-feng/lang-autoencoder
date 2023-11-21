@@ -2,13 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class GumbelSoftmax(torch.autograd.Function):
+class DiscreteGumbelSoftmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, logits, temperature):
         gumbel_noise = -torch.empty_like(logits).exponential_().log()
         scaled_logits = (logits + gumbel_noise) / temperature
         softmax = F.softmax(scaled_logits, dim = -1)
-        ctx.save_for_backward(softmax, torch.tensor(temperature))
+        ctx.save_for_backward(softmax, temperature)
         samples = torch.multinomial(softmax, num_samples = 1)
         return F.one_hot(samples, num_classes = logits.shape[-1]).float()
 
@@ -17,6 +17,17 @@ class GumbelSoftmax(torch.autograd.Function):
         softmax, temperature = ctx.saved_tensors
         output = (softmax * (1 - softmax) * gradient) / temperature
         return output, None, None
+
+class GumbelSoftmax(nn.Module):
+    def __init__(self, temperature):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, logits):
+        gumbel_noise = -torch.empty_like(logits).exponential_().log()
+        scaled_logits = (logits + gumbel_noise) / self.temperature
+        softmax = F.softmax(scaled_logits, dim = -1)
+        return softmax
 
 class LangTransformer(nn.Module):
     def __init__(
@@ -32,7 +43,7 @@ class LangTransformer(nn.Module):
         dim_feedforward,
         sos_token = 0,
         output_seq_len = 256,
-        temperature = 1,
+        temperature = 1.0,
     ):
         super().__init__()
 
@@ -54,7 +65,7 @@ class LangTransformer(nn.Module):
             dim_feedforward = dim_feedforward,
             batch_first = True,
         )
-        self.softmax = GumbelSoftmax.apply
+        self.softmax = GumbelSoftmax(temperature)
         self.lin = nn.Linear(d_model, output_vocab_size)
     
     def forward(self, src, tgt = None):
@@ -66,20 +77,20 @@ class LangTransformer(nn.Module):
             output = []
             for _ in range(self.output_seq_len):
                 tgt = self.output_embed(seq)
-                logits = self.lin(self.transformer(src, tgt)[:, -1])
+                logits = self.lin(self.transformer(src, tgt)[:, -1:])
                 output.append(logits)
-                seq = torch.cat((seq, self.softmax(logits, self.temperature)), dim = 1)
+                seq = torch.cat((seq, self.softmax(logits)), dim = 1)
             return seq, torch.stack(output, dim = 1)
         else:
+            seq = tgt
             tgt = self.output_embed(tgt)
             output = self.transformer(src, tgt)
-            return None, self.lin(output)
+            return seq, self.lin(output)
 
 class LangAutoencoder(nn.Module):
     def __init__(self, encoder, decoder):
         super().__init__()
         self.encoder = encoder
-        self.softmax = GumbelSoftmax.apply
         self.decoder = decoder
 
     def forward(self, src):

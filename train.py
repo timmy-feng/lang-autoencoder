@@ -19,7 +19,7 @@ config = yaml.safe_load(open(args.config, 'r'))
 input_vocab_size = config['lang']['input']['vocab_size']
 output_vocab_size = config['lang']['output']['vocab_size']
 
-device = torch.device('cuda:0')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 src_embed = nn.Linear(input_vocab_size, config['model']['d_model'], bias = False)
 conlang_embed = nn.Linear(output_vocab_size, config['model']['d_model'], bias = False)
@@ -56,7 +56,9 @@ optimizer = optim.Adam(model.parameters(), lr = config['train']['lr'])
 
 train_dataset = torch.load(config['dataset']['train'])
 train_loader = DataLoader(train_dataset, batch_size = config['train']['batch_size'], shuffle = True)
+
 model.to(device)
+torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
 
 for epoch in range(config['train']['epochs']):
     print(f'Epoch {epoch + 1}:')

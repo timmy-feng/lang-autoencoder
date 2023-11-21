@@ -10,12 +10,13 @@ dataset:
   val: ./datasets/starwars/ep4/val.pt
 model:
   d_model: 16
-  nhead: 4
+  nhead: 2
   num_encoder_layers: 1
   num_decoder_layers: 1
   dim_feedforward: 32
-  temperature: 1.0
+  temperature: 0.5
 train:
   lr: 0.001
-  batch_size: 32
+  batch_size: 4
   epochs: 25
+  clip_grad_norm: 1.0
