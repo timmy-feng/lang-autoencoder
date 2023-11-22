@@ -50,6 +50,8 @@ if __name__ == '__main__':
     word_dict = get_word_dict([token for line in tokenized_text for token in line])
     indexed_text = [pad(replace_words(line, word_dict), MAX_SEQ_LEN) for line in tokenized_text]
 
+    print(tokenized_text[0:3])
+
     dataset = TensorDataset(torch.tensor(indexed_text, dtype = torch.long))
 
     val_size = int(len(dataset) * VAL_SPLIT)

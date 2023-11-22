@@ -8,7 +8,7 @@ import argparse
 import yaml
 from tqdm import tqdm
 
-from model import LangTransformer, LangAutoencoder
+from model import TransformerEncoder, Transformer, Autoencoder
 
 parser = argparse.ArgumentParser()
 parser.add_argument('config')
@@ -24,33 +24,34 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 src_embed = nn.Linear(input_vocab_size, config['model']['d_model'], bias = False)
 conlang_embed = nn.Linear(output_vocab_size, config['model']['d_model'], bias = False)
 
-conlang_encoder = LangTransformer(
-    input_vocab_size,
-    output_vocab_size,
+conlang_encoder = TransformerEncoder(
+    input_vocab_size = input_vocab_size,
+    input_seq_len = config['lang']['input']['max_seq_len'],
+    output_vocab_size = output_vocab_size,
+    output_seq_len = config['lang']['output']['max_seq_len'],
     input_embed = src_embed,
-    output_embed = conlang_embed,
     d_model = config['model']['d_model'],
     nhead = config['model']['nhead'],
-    num_encoder_layers = config['model']['num_encoder_layers'],
-    num_decoder_layers = config['model']['num_decoder_layers'],
+    num_layers = config['model']['num_encoder_layers'],
     dim_feedforward = config['model']['dim_feedforward'],
-    output_seq_len = config['lang']['input']['max_seq_len'],
     temperature = config['model']['temperature'],
 )
 
-conlang_decoder = LangTransformer(
-    output_vocab_size,
-    input_vocab_size,
+conlang_decoder = Transformer(
+    input_vocab_size = output_vocab_size,
+    input_seq_len = config['lang']['output']['max_seq_len'],
+    output_vocab_size = input_vocab_size,
+    output_seq_len = config['lang']['input']['max_seq_len'],
     input_embed = conlang_embed,
     output_embed = src_embed,
     d_model = config['model']['d_model'],
     nhead = config['model']['nhead'],
     num_encoder_layers = config['model']['num_encoder_layers'],
     num_decoder_layers = config['model']['num_decoder_layers'],
-    dim_feedforward= config['model']['dim_feedforward'],
+    dim_feedforward = config['model']['dim_feedforward'],
 )
 
-model = LangAutoencoder(conlang_encoder, conlang_decoder)
+model = Autoencoder(conlang_encoder, conlang_decoder)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr = config['train']['lr'])
 
@@ -61,12 +62,14 @@ model.to(device)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
 
 for epoch in range(config['train']['epochs']):
-    print(f'Epoch {epoch + 1}:')
     progress_bar = tqdm(total = len(train_loader), position = 0)
     train_loss_log = tqdm(total = 0, position = 1, bar_format = '{desc}')
 
+    progress_bar.write(f'Epoch {epoch + 1}')
+
     for src, in train_loader:
         src = F.one_hot(src, input_vocab_size).float().to(device)
+        src = src[:, :config['lang']['input']['max_seq_len'], :]
         output = model(src)
         loss = criterion(output, src)
         loss.backward()
