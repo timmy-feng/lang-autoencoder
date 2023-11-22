@@ -26,23 +26,24 @@ class GumbelSoftmax(nn.Module):
         self.temperature = temperature
         self.eps = eps
 
-    def gumbel_sample(self, shape):
-        uniform_noise = torch.clamp(torch.rand(shape), min = self.eps, max = 1 - self.eps)
+    def gumbel_sample(self, logits):
+        uniform_noise = torch.rand_like(logits, device = logits.device)
+        uniform_noise = torch.clamp(uniform_noise, min = self.eps, max = 1 - self.eps)
         gumbel_noise = -torch.log(-torch.log(uniform_noise))
         return gumbel_noise
 
     def forward(self, logits):
-        gumbel_noise = self.gumbel_sample(logits.shape)
+        gumbel_noise = self.gumbel_sample(logits)
         scaled_logits = (logits + gumbel_noise) / self.temperature
         softmax = F.softmax(scaled_logits, dim = -1)
         return softmax
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_len):
+    def __init__(self, d_model, max_seq_len = 4096):
         super().__init__()
 
         positional_encoding = torch.zeros(max_seq_len, d_model)
-        position = torch.arange(0, max_seq_len, dtype = torch.float).unsqueeze(1)
+        position = torch.arange(0, max_seq_len, dtype = torch.float).view(-1, 1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0)) / d_model)
         positional_encoding[:, 0::2] = torch.sin(position * div_term)
         positional_encoding[:, 1::2] = torch.cos(position * div_term)
@@ -51,14 +52,12 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('positional_encoding', positional_encoding)
 
     def forward(self, x):
-        x = x + self.positional_encoding[:, :x.size(1), :]
-        return x
+        return x + self.positional_encoding[:, :x.size(1), :]
 
 class TransformerEncoder(nn.Module):
     def __init__(
         self,
         input_vocab_size,
-        input_seq_len,
         output_vocab_size,
         output_seq_len,
         input_embed,
@@ -71,7 +70,6 @@ class TransformerEncoder(nn.Module):
         super().__init__()
 
         self.input_vocab_size = input_vocab_size
-        self.input_seq_len = input_seq_len
         self.output_vocab_size = output_vocab_size
         self.output_seq_len = output_seq_len
 
@@ -90,7 +88,7 @@ class TransformerEncoder(nn.Module):
         )
         self.lin = nn.Linear(d_model, output_vocab_size)
 
-        self.position_encoder = PositionalEncoding(d_model, input_seq_len)
+        self.position_encoder = PositionalEncoding(d_model)
         self.softmax = GumbelSoftmax(temperature)
         self.temperature = temperature
 
@@ -108,9 +106,7 @@ class Transformer(nn.Module):
     def __init__(
         self,
         input_vocab_size,
-        input_seq_len,
         output_vocab_size,
-        output_seq_len,
         input_embed,
         output_embed,
         d_model,
@@ -138,19 +134,26 @@ class Transformer(nn.Module):
         )
         self.lin = nn.Linear(d_model, output_vocab_size)
 
-        max_seq_len = max(input_seq_len, output_seq_len)
-        self.position_encoder = PositionalEncoding(d_model, max_seq_len)
+        self.position_encoder = PositionalEncoding(d_model)
     
     def forward(self, src, tgt):
         src = self.input_embed(src) * math.sqrt(self.d_model)
-        src = self.position_encoder(src)
         tgt = self.output_embed(tgt) * math.sqrt(self.d_model)
+        src = self.position_encoder(src)
         tgt = self.position_encoder(tgt)
 
-        output = self.transformer(src, tgt)
+        tgt_mask = self.get_tgt_mask(tgt.size(1))
+
+        output = self.transformer(src, tgt, tgt_mask = tgt_mask)
         output = self.lin(output)
 
         return output
+
+    def get_tgt_mask(self, seq_len):
+        mask = torch.tril(torch.ones(seq_len, seq_len)).float()
+        mask = mask.masked_fill(mask == 0, float('-inf'))
+        mask = mask.masked_fill(mask == 1, 0.0)
+        return mask
 
 class Autoencoder(nn.Module):
     def __init__(self, encoder, decoder):
@@ -160,4 +163,4 @@ class Autoencoder(nn.Module):
 
     def forward(self, src):
         tokens = self.encoder(src)
-        return self.decoder(tokens, src)
+        return self.decoder(tokens, src[:, :-1])
