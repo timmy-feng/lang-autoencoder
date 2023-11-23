@@ -55,7 +55,9 @@ criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr = config['train']['lr'])
 
 train_dataset = torch.load(config['dataset']['train'])
+val_dataset = torch.load(config['dataset']['val'])
 train_loader = DataLoader(train_dataset, batch_size = config['train']['batch_size'], shuffle = True)
+val_loader = DataLoader(val_dataset, batch_size = config['train']['batch_size'])
 
 model.to(device)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
@@ -63,6 +65,7 @@ torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_no
 for epoch in range(config['train']['epochs']):
     progress_bar = tqdm(total = len(train_loader), position = 0)
     train_loss_log = tqdm(total = 0, position = 1, bar_format = '{desc}')
+    val_loss_log = tqdm(total = 0, position = 2, bar_format = '{desc}')
 
     progress_bar.write(f'Epoch {epoch + 1}')
 
@@ -82,5 +85,24 @@ for epoch in range(config['train']['epochs']):
 
         accuracy = ((torch.argmax(output, dim = 1) == src).sum() - (src == 0).sum()) / (src != 0).sum()
 
-        train_loss_log.set_description_str(f'Train loss: {loss.item():.4f}, Train accuracy: {accuracy:.4f}')
+        train_loss_log.set_description_str(f'Train loss: {loss.item():.4f}, '
+            f'Train accuracy: {accuracy:.4f}')
         progress_bar.update(1)
+
+    total_loss, total_samples, total_matches, total_tokens = 0, 0, 0, 0
+    for src, in val_loader:
+        src = src[:, :input_max_len].to(device)
+        src_one_hot = F.one_hot(src, input_vocab_size).float().to(device)
+
+        output = model(src_one_hot)
+        output = output.transpose(1, 2)
+
+        src = src[:, 1:]
+        loss = criterion(output, src)
+
+        total_loss += loss.detach().item() * src.size(0)
+        total_samples += src.size(0)
+        total_matches += (torch.argmax(output, dim = 1) == src).sum() - (src == 0).sum()
+        total_tokens += (src != 0).sum()
+    val_loss_log.set_description_str(f'Val loss: {(total_loss / total_samples):.4f}, '
+        f'Val accuracy: {(total_matches / total_tokens):.4f}')
