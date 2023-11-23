@@ -6,8 +6,8 @@ lang:
     vocab_size: 64
     max_seq_len: 32
 dataset:
-  train: ./datasets/starwars/ep4/train.pt
-  val: ./datasets/starwars/ep4/val.pt
+  train: ./starwars/datasets/ep4/train.pt
+  val: ./starwars/datasets/ep4/val.pt
 model:
   d_model: 256
   nhead: 4
@@ -16,7 +16,8 @@ model:
   dim_feedforward: 2048
   temperature: 0.1
 train:
+  path: ./starwars/models/ep4/test.pt
   lr: 0.0001
   batch_size: 256
-  epochs: 256
+  epochs: 250
   clip_grad_norm: 1.0
