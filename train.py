@@ -7,7 +7,11 @@ from torch.utils.data import DataLoader
 import argparse
 import yaml
 import os
+
 from tqdm import tqdm
+
+# use notebook tailored progress bars when in Jupyter
+# from tqdm.notebook import tqdm
 
 from model import TransformerEncoder, Transformer, Autoencoder
 
@@ -25,9 +29,9 @@ input_max_len = config['lang']['input']['seq_len']
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 src_embed = nn.Linear(input_vocab_size, config['model']['d_model'], bias = False)
-conlang_embed = nn.Linear(output_vocab_size, config['model']['d_model'], bias = False)
+lang_embed = nn.Linear(output_vocab_size, config['model']['d_model'], bias = False)
 
-conlang_encoder = TransformerEncoder(
+lang_encoder = TransformerEncoder(
     input_vocab_size = input_vocab_size,
     output_vocab_size = output_vocab_size,
     output_len = config['lang']['output']['seq_len'],
@@ -36,15 +40,13 @@ conlang_encoder = TransformerEncoder(
     nhead = config['model']['nhead'],
     num_layers = config['model']['num_encoder_layers'],
     dim_feedforward = config['model']['dim_feedforward'],
-    temperature = config['model']['temperature'],
     dropout = config['train']['dropout'],
-    discrete = config['train']['discrete'],
 )
 
-conlang_decoder = Transformer(
+lang_decoder = Transformer(
     input_vocab_size = output_vocab_size,
     output_vocab_size = input_vocab_size,
-    input_embed = conlang_embed,
+    input_embed = lang_embed,
     output_embed = src_embed,
     d_model = config['model']['d_model'],
     nhead = config['model']['nhead'],
@@ -54,7 +56,13 @@ conlang_decoder = Transformer(
     dropout = config['train']['dropout'],
 )
 
-model = Autoencoder(conlang_encoder, conlang_decoder)
+model = Autoencoder(
+    lang_encoder,
+    lang_decoder,
+    temperature = config['model']['temperature'],
+    discrete = config['train']['discrete'],
+)
+
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(
     model.parameters(),

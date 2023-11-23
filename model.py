@@ -14,6 +14,7 @@ class StraightThroughSample(torch.autograd.Function):
         result = F.one_hot(samples, num_classes = softmax.shape[-1]).float()
         return result
     
+    @staticmethod
     def backward(ctx, gradient):
         softmax, = ctx.saved_tensors
         return softmax * gradient
@@ -35,10 +36,16 @@ class GumbelSoftmax(nn.Module):
         return gumbel_noise
 
     def forward(self, logits):
-        gumbel_noise = self.gumbel_sample(logits)
+        gumbel_noise = self.gumbel_sample(logits) if self.training \
+            else torch.zeros_like(logits, device = logits.device)
+
         scaled_logits = (logits + gumbel_noise) / self.temperature
         softmax = F.softmax(scaled_logits, dim = -1)
-        return self.sample(softmax) if self.discrete or not self.training else softmax
+
+        samples = softmax if not self.discrete and self.training \
+            else self.sample(softmax)
+
+        return samples
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_len = 4096):
@@ -67,9 +74,7 @@ class TransformerEncoder(nn.Module):
         nhead,
         num_layers,
         dim_feedforward,
-        temperature,
         dropout,
-        discrete,
     ):
         super().__init__()
 
@@ -94,8 +99,6 @@ class TransformerEncoder(nn.Module):
         self.lin = nn.Linear(d_model, output_vocab_size)
 
         self.position_encoder = PositionalEncoding(d_model)
-        self.softmax = GumbelSoftmax(temperature, discrete)
-        self.temperature = temperature
 
     def forward(self, src):
         src = self.input_embed(src) * math.sqrt(self.d_model)
@@ -103,7 +106,6 @@ class TransformerEncoder(nn.Module):
 
         output = self.encoder(src)[:, :self.output_len, :]
         output = self.lin(output)
-        output = self.softmax(output)
 
         return output
 
@@ -163,11 +165,13 @@ class Transformer(nn.Module):
         return mask
 
 class Autoencoder(nn.Module):
-    def __init__(self, encoder, decoder):
+    def __init__(self, encoder, decoder, temperature, discrete):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
+        self.softmax = GumbelSoftmax(temperature, discrete)
 
     def forward(self, src):
-        tokens = self.encoder(src)
+        logits = self.encoder(src)
+        tokens = self.softmax(logits)
         return self.decoder(tokens, src[:, :-1])
