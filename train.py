@@ -38,6 +38,7 @@ conlang_encoder = TransformerEncoder(
     dim_feedforward = config['model']['dim_feedforward'],
     temperature = config['model']['temperature'],
     dropout = config['train']['dropout'],
+    discrete = config['train']['discrete'],
 )
 
 conlang_decoder = Transformer(
@@ -75,6 +76,8 @@ for epoch in range(config['train']['epochs']):
 
     progress_bar.write(f'Epoch {epoch + 1}')
 
+    model.train()
+
     for src, in train_loader:
         src = src[:, :input_max_len].to(device)
         src_one_hot = F.one_hot(src, input_vocab_size).float().to(device)
@@ -97,6 +100,8 @@ for epoch in range(config['train']['epochs']):
 
     progress_bar.close()
     train_loss_log.close()
+
+    model.eval()
 
     total_loss, total_samples, total_matches, total_tokens = 0, 0, 0, 0
     for src, in val_loader:

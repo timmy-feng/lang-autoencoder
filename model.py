@@ -4,27 +4,29 @@ import torch.nn.functional as F
 
 import math
 
-class DiscreteGumbelSoftmax(torch.autograd.Function):
+class StraightThroughSample(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, logits, temperature):
-        gumbel_noise = -torch.empty_like(logits).exponential_().log()
-        scaled_logits = (logits + gumbel_noise) / temperature
-        softmax = F.softmax(scaled_logits, dim = -1)
-        ctx.save_for_backward(softmax, temperature)
-        samples = torch.multinomial(softmax, num_samples = 1)
-        return F.one_hot(samples, num_classes = logits.shape[-1]).float()
-
-    @staticmethod
+    def forward(ctx, softmax):
+        ctx.save_for_backward(softmax)
+        seq_len = softmax.size(1)
+        samples = torch.multinomial(softmax.view(-1, softmax.shape[-1]), num_samples = 1)
+        samples = samples.view(-1, seq_len)
+        result = F.one_hot(samples, num_classes = softmax.shape[-1]).float()
+        return result
+    
     def backward(ctx, gradient):
-        softmax, temperature = ctx.saved_tensors
-        output = (softmax * (1 - softmax) * gradient) / temperature
-        return output, None, None
+        softmax, = ctx.saved_tensors
+        return softmax * gradient
 
 class GumbelSoftmax(nn.Module):
-    def __init__(self, temperature, eps = 1e-10):
+    def __init__(self, temperature, discrete, eps = 1e-10):
         super().__init__()
+
         self.temperature = temperature
+        self.discrete = discrete
         self.eps = eps
+
+        self.sample = StraightThroughSample.apply
 
     def gumbel_sample(self, logits):
         uniform_noise = torch.rand_like(logits, device = logits.device)
@@ -36,7 +38,7 @@ class GumbelSoftmax(nn.Module):
         gumbel_noise = self.gumbel_sample(logits)
         scaled_logits = (logits + gumbel_noise) / self.temperature
         softmax = F.softmax(scaled_logits, dim = -1)
-        return softmax
+        return self.sample(softmax) if self.discrete or not self.training else softmax
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_len = 4096):
@@ -67,6 +69,7 @@ class TransformerEncoder(nn.Module):
         dim_feedforward,
         temperature,
         dropout,
+        discrete,
     ):
         super().__init__()
 
@@ -91,7 +94,7 @@ class TransformerEncoder(nn.Module):
         self.lin = nn.Linear(d_model, output_vocab_size)
 
         self.position_encoder = PositionalEncoding(d_model)
-        self.softmax = GumbelSoftmax(temperature)
+        self.softmax = GumbelSoftmax(temperature, discrete)
         self.temperature = temperature
 
     def forward(self, src):
