@@ -20,7 +20,7 @@ config = yaml.safe_load(open(args.config, 'r'))
 input_vocab_size = config['lang']['input']['vocab_size']
 output_vocab_size = config['lang']['output']['vocab_size']
 
-input_max_len = config['lang']['input']['max_seq_len']
+input_max_len = config['lang']['input']['seq_len']
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -30,13 +30,14 @@ conlang_embed = nn.Linear(output_vocab_size, config['model']['d_model'], bias = 
 conlang_encoder = TransformerEncoder(
     input_vocab_size = input_vocab_size,
     output_vocab_size = output_vocab_size,
-    output_seq_len = config['lang']['output']['max_seq_len'],
+    output_len = config['lang']['output']['seq_len'],
     input_embed = src_embed,
     d_model = config['model']['d_model'],
     nhead = config['model']['nhead'],
     num_layers = config['model']['num_encoder_layers'],
     dim_feedforward = config['model']['dim_feedforward'],
     temperature = config['model']['temperature'],
+    dropout = config['train']['dropout'],
 )
 
 conlang_decoder = Transformer(
@@ -49,11 +50,16 @@ conlang_decoder = Transformer(
     num_encoder_layers = config['model']['num_encoder_layers'],
     num_decoder_layers = config['model']['num_decoder_layers'],
     dim_feedforward = config['model']['dim_feedforward'],
+    dropout = config['train']['dropout'],
 )
 
 model = Autoencoder(conlang_encoder, conlang_decoder)
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr = config['train']['lr'])
+optimizer = optim.Adam(
+    model.parameters(),
+    lr = config['train']['lr'],
+    weight_decay = config['train']['weight_decay'],
+)
 
 train_dataset = torch.load(config['dataset']['train'])
 val_dataset = torch.load(config['dataset']['val'])

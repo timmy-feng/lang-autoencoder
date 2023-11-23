@@ -59,19 +59,20 @@ class TransformerEncoder(nn.Module):
         self,
         input_vocab_size,
         output_vocab_size,
-        output_seq_len,
+        output_len,
         input_embed,
         d_model,
         nhead,
         num_layers,
         dim_feedforward,
         temperature,
+        dropout,
     ):
         super().__init__()
 
         self.input_vocab_size = input_vocab_size
         self.output_vocab_size = output_vocab_size
-        self.output_seq_len = output_seq_len
+        self.output_len = output_len
 
         self.input_embed = input_embed
 
@@ -80,6 +81,7 @@ class TransformerEncoder(nn.Module):
             d_model = d_model,
             nhead = nhead,
             dim_feedforward = dim_feedforward,
+            dropout = dropout,
             batch_first = True,
         )
         self.encoder = nn.TransformerEncoder(
@@ -96,7 +98,7 @@ class TransformerEncoder(nn.Module):
         src = self.input_embed(src) * math.sqrt(self.d_model)
         src = self.position_encoder(src)
 
-        output = self.encoder(src)[:, :self.output_seq_len, :]
+        output = self.encoder(src)[:, :self.output_len, :]
         output = self.lin(output)
         output = self.softmax(output)
 
@@ -114,6 +116,7 @@ class Transformer(nn.Module):
         num_encoder_layers,
         num_decoder_layers,
         dim_feedforward,
+        dropout,
     ):
         super().__init__()
 
@@ -130,6 +133,7 @@ class Transformer(nn.Module):
             num_encoder_layers = num_encoder_layers,
             num_decoder_layers = num_decoder_layers,
             dim_feedforward = dim_feedforward,
+            dropout = dropout,
             batch_first = True,
         )
         self.lin = nn.Linear(d_model, output_vocab_size)
