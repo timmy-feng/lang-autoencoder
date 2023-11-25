@@ -17,10 +17,22 @@ MAX_SEQ_LEN = 128
 VAL_SPLIT = 0.1
 TEST_SPLIT = 0.1
 
+def line_to_sentence(line):
+    num_quotes = 0
+    for i, char in enumerate(line):
+        if num_quotes == 5:
+            line = line[i:]
+            break
+        if char == '"':
+            num_quotes += 1
+    
+    return line[:-1]
+
 def tokenize(sentence):
-    sentence = re.sub("[^a-zA-Z]", " ", sentence)
+    sentence = re.sub("[^a-zA-Z'-']", " ", sentence)
     sentence = sentence.lower()
-    tokens = word_tokenize(sentence)
+    #tokens = word_tokenize(sentence)
+    tokens = sentence.split()
     lemmatizer = WordNetLemmatizer()
     tokens = [lemmatizer.lemmatize(w) for w in tokens]
     return tokens
@@ -46,7 +58,7 @@ def pad(tokens, length):
 if __name__ == '__main__':
     text = open('datasets/starwars/SW_EpisodeIV.txt', 'r').read()
 
-    tokenized_text = [tokenize(line) for line in text.split('\n')[1:]]
+    tokenized_text = [tokenize(line_to_sentence(line)) for line in text.split('\n')[1:]]
     word_dict = get_word_dict([token for line in tokenized_text for token in line])
     indexed_text = [pad(replace_words(line, word_dict), MAX_SEQ_LEN) for line in tokenized_text]
 
