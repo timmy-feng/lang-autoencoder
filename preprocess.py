@@ -8,14 +8,19 @@ from nltk.tokenize import word_tokenize
 from torch.utils.data import TensorDataset, random_split
 import torch
 
+UNK_THRESHOLD = 5
+
 PAD_IDX = 0
 SOS_IDX = 1
 EOS_IDX = 2
+UNK_IDX = 3
 
 MAX_SEQ_LEN = 128
 
 VAL_SPLIT = 0.1
 TEST_SPLIT = 0.1
+
+counts = {}
 
 def line_to_sentence(line):
     num_quotes = 0
@@ -35,13 +40,24 @@ def tokenize(sentence):
     tokens = sentence.split()
     lemmatizer = WordNetLemmatizer()
     tokens = [lemmatizer.lemmatize(w) for w in tokens]
+    for w in tokens:
+        if w not in counts:
+            counts[w] = 1
+        else:
+            counts[w] += 1
     return tokens
+
+def replace_unk(tokens):
+    for i, w in enumerate(tokens):
+        if counts[w] <= UNK_THRESHOLD:
+            tokens[i] = '<unk>'
 
 def get_word_dict(tokens):
     result = {
         '<pad>': PAD_IDX,
         '<sos>': SOS_IDX,
         '<eos>': EOS_IDX,
+        '<unk>': UNK_IDX,
     }
 
     for token in tokens:
@@ -59,6 +75,8 @@ if __name__ == '__main__':
     text = open('datasets/starwars/SW_EpisodeIV.txt', 'r').read()
 
     tokenized_text = [tokenize(line_to_sentence(line)) for line in text.split('\n')[1:]]
+    for tokens in tokenized_text:
+        replace_unk(tokens)
     word_dict = get_word_dict([token for line in tokenized_text for token in line])
     indexed_text = [pad(replace_words(line, word_dict), MAX_SEQ_LEN) for line in tokenized_text]
 
