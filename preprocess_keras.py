@@ -5,8 +5,11 @@ import pickle
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 
-from torch.utils.data import TensorDataset, random_split
+from torch.utils.data import TensorDataset, Dataset, random_split
 import torch
+import tensorflow as tf
+import keras
+from keras import layers
 
 UNK_THRESHOLD = 5
 
@@ -16,6 +19,7 @@ EOS_IDX = 2
 UNK_IDX = 3
 
 MAX_SEQ_LEN = 135
+MAX_VOCAB_SIZE = 700
 
 VAL_SPLIT = 0.1
 TEST_SPLIT = 0.1
@@ -71,22 +75,49 @@ def replace_words(tokens, word_dict):
 def pad(tokens, length):
     return tokens + [PAD_IDX] * (length - len(tokens))
 
+class CustomDataset(Dataset):
+    def __init__(self, data):
+        self.data = torch.from_numpy(data)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        return self.data[idx]
+
 if __name__ == '__main__':
     path = 'starwars/datasets/'
-    tokenized_text = []
+    sentences = []
     for name in ['SW_EpisodeIV.txt', 'SW_EpisodeV.txt', 'SW_EpisodeVI.txt']:
         text = open(path + name, 'r').read()
-        tokenized_text += [tokenize(line_to_sentence(line)) for line in text.split('\n')[1: -1]]
-        print (tokenized_text[-5:])
+        sentences += [line_to_sentence(line) for line in text.split('\n')[1: -1]]
+        print (sentences[-5:])
         print ()
-
-    for tokens in tokenized_text:
-        replace_unk(tokens)
     
-    word_dict = get_word_dict([token for line in tokenized_text for token in line])
-    indexed_text = [pad(replace_words(line, word_dict), MAX_SEQ_LEN) for line in tokenized_text]
+    text_vectorizer = layers.TextVectorization(
+        max_tokens=MAX_VOCAB_SIZE,
+        standardize='lower_and_strip_punctuation',
+        split='whitespace',
+        ngrams=None,
+        output_mode='int',
+        output_sequence_length=None,
+        pad_to_max_tokens=False,
+        vocabulary=None,
+        idf_weights=None,
+        sparse=False,
+        ragged=False,
+        encoding='utf-8',
+    )
+    text_vectorizer.adapt(sentences)
+    indexed_text = text_vectorizer(sentences).numpy()
 
-    print(tokenized_text[0:3])
+    print (sentences[:3])
+    print (indexed_text[: 3])
+
+    vocabulary = text_vectorizer.get_vocabulary()
+    word_to_index = {word: index for index, word in enumerate(vocabulary)}
+
+    print (word_to_index)
 
     dataset = TensorDataset(torch.tensor(indexed_text, dtype = torch.long))
 
@@ -95,9 +126,10 @@ if __name__ == '__main__':
     train_size = len(dataset) - val_size - test_size
 
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
-    torch.save(train_dataset, 'starwars/datasets/ep4/train.pt')
-    torch.save(val_dataset, 'starwars/datasets/ep4/val.pt')
-    torch.save(test_dataset, 'starwars/datasets/ep4/test.pt')
+    torch.save(train_dataset, 'starwars/datasets/keras_tokenizer/train.pt')
+    torch.save(val_dataset, 'starwars/datasets/keras_tokenizer/val.pt')
+    torch.save(test_dataset, 'starwars/datasets/keras_tokenizer/test.pt')
 
-    with open('starwars/datasets/ep4/word_dict.pkl', 'wb') as f:
-        pickle.dump(word_dict, f)
+    with open('starwars/datasets/keras_tokenizer/word_dict.pkl', 'wb') as f:
+        pickle.dump(word_to_index, f)
+    
