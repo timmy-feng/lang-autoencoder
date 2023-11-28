@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+import pandas as pd
+import numpy as np
 
 import argparse
 import yaml
@@ -78,6 +80,11 @@ val_loader = DataLoader(val_dataset, batch_size = config['train']['batch_size'])
 model.to(device)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
 
+train_loss = []
+train_acc = []
+val_loss = []
+val_acc = []
+
 for epoch in range(config['train']['epochs']):
     progress_bar = tqdm(total = len(train_loader), position = 0)
     train_loss_log = tqdm(total = 0, position = 1, bar_format = '{desc}')
@@ -86,6 +93,7 @@ for epoch in range(config['train']['epochs']):
 
     model.train()
 
+    train_loss_value, train_loss_accuracy = -1, -1
     for src, in train_loader:
         src = src[:, :input_max_len].to(device)
         src_one_hot = F.one_hot(src, input_vocab_size).float().to(device)
@@ -102,10 +110,18 @@ for epoch in range(config['train']['epochs']):
 
         accuracy = ((torch.argmax(output, dim = 1) == src) * (src != 0)).sum() / (src != 0).sum()
 
+        # for updating into csv
+        train_loss_value = loss.item()
+        train_loss_accuracy = accuracy
+        
         train_loss_log.set_description_str(f'Train loss: {loss.item():.4f}, '
             f'Train accuracy: {accuracy:.4f}')
         progress_bar.update(1)
 
+    # add to csv arrays
+    train_loss.append(train_loss_value)
+    train_acc.append(train_loss_accuracy)
+    
     progress_bar.close()
     train_loss_log.close()
 
@@ -127,10 +143,20 @@ for epoch in range(config['train']['epochs']):
         total_matches += ((torch.argmax(output, dim = 1) == src) * (src != 0)).sum()
         total_tokens += (src != 0).sum()
 
+    # add to csv arrays
+    val_loss.append((total_loss/total_samples))
+    val_acc.append((total_matches/total_tokens))
+    
     print(f'Val loss: {(total_loss / total_samples):.4f}, '
         f'Val accuracy: {(total_matches / total_tokens):.4f}')
     print()
-    
+
+# add arrays to a csv
+df = pd.DataFrame(np.array([train_loss, train_acc, val_loss, val_acc]).T)
+df.columns = ["train loss", "train acc", "val loss", "val acc"]
+df.to_csv(f"data/lr_{config['train']['lr']}_batch_{config['train']['batch_size']}_dropout_{config['train']['dropout']}.csv")
+
+
 save_path = config['train']['path']
 save_dir = os.path.dirname(save_path)
 if not os.path.exists(save_dir):
