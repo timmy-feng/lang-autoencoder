@@ -13,10 +13,12 @@ from tqdm import tqdm
 # use notebook tailored progress bars when in Jupyter
 # from tqdm.notebook import tqdm
 
-from model import TransformerEncoder, Transformer, Autoencoder
+from utils.model import TransformerEncoder, Transformer, Autoencoder
+
+UNK_ID, SOS_ID, EOS_ID, PAD_ID = 0, 1, 2, 3
 
 parser = argparse.ArgumentParser()
-parser.add_argument('config')
+parser.add_argument('config', type=str)
 args = parser.parse_args()
 
 config = yaml.safe_load(open(args.config, 'r'))
@@ -73,7 +75,7 @@ optimizer = optim.Adam(
 train_dataset = torch.load(config['dataset']['train'])
 val_dataset = torch.load(config['dataset']['val'])
 train_loader = DataLoader(train_dataset, batch_size = config['train']['batch_size'], shuffle = True)
-val_loader = DataLoader(val_dataset, batch_size = config['train']['batch_size'])
+val_loader = DataLoader(val_dataset, batch_size = 1)
 
 model.to(device)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
@@ -100,7 +102,7 @@ for epoch in range(config['train']['epochs']):
         optimizer.step()
         optimizer.zero_grad()
 
-        accuracy = ((torch.argmax(output, dim = 1) == src) * (src != 0)).sum() / (src != 0).sum()
+        accuracy = ((torch.argmax(output, dim = 1) == src) * (src != PAD_ID)).sum() / (src != PAD_ID).sum()
 
         train_loss_log.set_description_str(f'Train loss: {loss.item():.4f}, '
             f'Train accuracy: {accuracy:.4f}')
@@ -124,15 +126,16 @@ for epoch in range(config['train']['epochs']):
 
         total_loss += loss.detach().item() * src.size(0)
         total_samples += src.size(0)
-        total_matches += ((torch.argmax(output, dim = 1) == src) * (src != 0)).sum()
-        total_tokens += (src != 0).sum()
+        total_matches += ((torch.argmax(output, dim = 1) == src) * (src != PAD_ID)).sum()
+        total_tokens += (src != PAD_ID).sum()
 
     print(f'Val loss: {(total_loss / total_samples):.4f}, '
         f'Val accuracy: {(total_matches / total_tokens):.4f}')
     print()
     
-save_path = config['train']['path']
+save_path = config['model']['path']
 save_dir = os.path.dirname(save_path)
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
+torch.save(model.state_dict(), save_path)
 print(f'Model saved to {save_path}')
