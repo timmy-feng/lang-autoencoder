@@ -58,7 +58,7 @@ model = Autoencoder(
     discrete = config['train']['discrete'],
 )
 
-model.load_state_dict(torch.load(config['model']['path']))
+model.load_state_dict(torch.load(config['model']['path'], map_location=device))
 sp = spm.SentencePieceProcessor(model_file=config['predict']['tokenizer'])
 
 model.eval()
@@ -68,9 +68,7 @@ print('Model loaded. Ready for inference.\n')
 outputs = {
     'tokenized': False,
     'translation': True,
-    'backtranslation': False,
-    'bleu': False,
-    'nll': False,
+    'backtranslation': True,
 }
 
 while True:
@@ -99,21 +97,20 @@ while True:
     src = torch.tensor([[SOS_ID] + tokens + [EOS_ID] + (input_max_len - len(tokens) - 2) * [PAD_ID]])
     src = F.one_hot(src, input_vocab_size).float().to(device)
 
-    logits = model.encoder(src)
-    lang = model.softmax(logits)
-    result = model.decoder(lang, src[:, :-1])
+    translation = model.translate(src)
+    translation_one_hot = F.one_hot(translation, output_vocab_size).float()
+    backtranslation = model.backtranslate(translation_one_hot, input_max_len)
 
     if outputs['tokenized']:
-        print(f'Tokenized: {tokens}')
+        print(f'Tokenized: ', end = '')
+        print(*tokens)
+        print()
 
     if outputs['translation']:
-        print(f'Translation: {list(map(int,torch.argmax(lang[0], dim=1)))}')
+        print(f'Translation: ', end = '')
+        print(*map(int, translation[0]))
         print()
 
     if outputs['backtranslation']:
-        backtranslation = list(
-            filter(lambda token: token != PAD_ID, 
-                map(int,torch.argmax(result[0], dim=1)))
-        )
-        print(f'Backtranslation: {sp.decode(backtranslation)}')
-        print()
+        backtranslation = list(filter(lambda token: token != PAD_ID, map(int, backtranslation[0])))
+        print(f'Backtranslation: {sp.decode(backtranslation)}\n')

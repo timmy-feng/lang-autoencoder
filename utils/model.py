@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 import math
 
+UNK_ID, SOS_ID, EOS_ID, PAD_ID = 0, 1, 2, 3
+
 class StraightThroughSample(torch.autograd.Function):
     @staticmethod
     def forward(ctx, softmax):
@@ -167,6 +169,7 @@ class Transformer(nn.Module):
 class Autoencoder(nn.Module):
     def __init__(self, encoder, decoder, temperature, discrete):
         super().__init__()
+        self.temperature = temperature
         self.encoder = encoder
         self.decoder = decoder
         self.softmax = GumbelSoftmax(temperature, discrete)
@@ -175,3 +178,18 @@ class Autoencoder(nn.Module):
         logits = self.encoder(src)
         tokens = self.softmax(logits)
         return self.decoder(tokens, src[:, :-1])
+
+    def translate(self, src):
+        assert not self.training
+        logits = self.encoder(src)
+        tokens = self.softmax(logits)
+        return torch.argmax(tokens, dim = -1)
+
+    def backtranslate(self, seq, length):
+        tokens = torch.full((seq.size(0), 1), SOS_ID, device = seq.device)
+        for _ in range(length - 1):
+            tokens_one_hot = F.one_hot(tokens, self.decoder.output_vocab_size).float()
+            results = self.decoder(seq, tokens_one_hot)[:, -1, :] / self.temperature
+            samples = torch.multinomial(torch.softmax(results, dim = -1), num_samples = 1)
+            tokens = torch.cat((tokens, samples), dim = 1)
+        return tokens
