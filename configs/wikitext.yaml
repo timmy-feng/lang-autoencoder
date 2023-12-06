@@ -1,16 +1,15 @@
 lang:
   input:
-    vocab_size: 512
+    vocab_size: 2048
     seq_len: 64
   output:
     vocab_size: 64
-    seq_len: 32
+    seq_len: 64
 dataset:
-  train: ./starwars/datasets/complete/train.pt
-  val: ./starwars/datasets/complete/val.pt
+  train: ./wikitext/datasets/train.pt
+  val: ./wikitext/datasets/val.pt
 model:
-  load_path: ./starwars/models/test.pt
-  save_path: ./starwars/models/test.pt
+  save_path: ./wikitext/models/test.pt
   d_model: 256
   nhead: 4
   num_encoder_layers: 3
@@ -26,4 +25,4 @@ train:
   epochs: 10
   clip_grad_norm: 1.0
 predict:
-  tokenizer: ./starwars/datasets/complete/tokenizer.model
+  tokenizer: ./wikitext/datasets/tokenizer.model

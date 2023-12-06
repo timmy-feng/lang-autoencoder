@@ -58,9 +58,9 @@ model = Autoencoder(
     discrete = config['train']['discrete'],
 )
 
-model.load_state_dict(torch.load(config['model']['path'], map_location=device))
+model.load_state_dict(torch.load(config['model']['save_path'], map_location=device))
 sp = spm.SentencePieceProcessor(model_file=config['predict']['tokenizer'])
-
+model.to(device)
 model.eval()
 
 print('Model loaded. Ready for inference.\n')

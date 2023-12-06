@@ -65,6 +65,9 @@ model = Autoencoder(
     discrete = config['train']['discrete'],
 )
 
+if 'load_path' in config['model']:
+    model.load_state_dict(torch.load(config['model']['load_path'], map_location=device))
+
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(
     model.parameters(),
@@ -79,6 +82,7 @@ val_loader = DataLoader(val_dataset, batch_size = 1)
 
 model.to(device)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
+torch.autograd.set_detect_anomaly(True, check_nan = True)
 
 for epoch in range(config['train']['epochs']):
     progress_bar = tqdm(total = len(train_loader), position = 0)
@@ -133,7 +137,7 @@ for epoch in range(config['train']['epochs']):
         f'Val accuracy: {(total_matches / total_tokens):.4f}')
     print()
     
-save_path = config['model']['path']
+save_path = config['model']['save_path']
 save_dir = os.path.dirname(save_path)
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)

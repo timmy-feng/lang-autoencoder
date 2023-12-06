@@ -38,6 +38,8 @@ class GumbelSoftmax(nn.Module):
         return gumbel_noise
 
     def forward(self, logits):
+        assert torch.isnan(logits).sum() == 0
+
         gumbel_noise = self.gumbel_sample(logits) if self.training \
             else torch.zeros_like(logits, device = logits.device)
 
@@ -87,6 +89,8 @@ class TransformerEncoder(nn.Module):
         self.input_embed = input_embed
 
         self.d_model = d_model
+        self.position_encoder = PositionalEncoding(d_model)
+        self.layer_norm = nn.LayerNorm(d_model)
         self.encoder_layer = nn.TransformerEncoderLayer(
             d_model = d_model,
             nhead = nhead,
@@ -100,11 +104,10 @@ class TransformerEncoder(nn.Module):
         )
         self.lin = nn.Linear(d_model, output_vocab_size)
 
-        self.position_encoder = PositionalEncoding(d_model)
-
     def forward(self, src):
         src = self.input_embed(src) * math.sqrt(self.d_model)
         src = self.position_encoder(src)
+        src = self.layer_norm(src)
 
         output = self.encoder(src)[:, :self.output_len, :]
         output = self.lin(output)

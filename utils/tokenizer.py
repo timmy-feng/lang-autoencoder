@@ -9,9 +9,9 @@ UNK_ID, SOS_ID, EOS_ID, PAD_ID = 0, 1, 2, 3
 
 parser = argparse.ArgumentParser()
 parser.add_argument('corpus', type=str)
+parser.add_argument('--save_path', type=str)
 parser.add_argument('--max_len', nargs='?', default=-1, type=int)
 parser.add_argument('--vocab_size', nargs='?', default=2048, type=int)
-parser.add_argument('--save_path', type=str)
 parser.add_argument('--val_split', nargs='?', default=0.1, type=float)
 parser.add_argument('--test_split', nargs='?', default=0.1, type=float)
 args = parser.parse_args()
