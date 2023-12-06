@@ -78,7 +78,7 @@ optimizer = optim.Adam(
 train_dataset = torch.load(config['dataset']['train'])
 val_dataset = torch.load(config['dataset']['val'])
 train_loader = DataLoader(train_dataset, batch_size = config['train']['batch_size'], shuffle = True)
-val_loader = DataLoader(val_dataset, batch_size = 1)
+val_loader = DataLoader(val_dataset, batch_size = config['train']['batch_size'])
 
 model.to(device)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
