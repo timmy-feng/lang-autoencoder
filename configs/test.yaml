@@ -9,7 +9,6 @@ dataset:
   train: ./starwars/datasets/complete/train.pt
   val: ./starwars/datasets/complete/val.pt
 model:
-  load_path: ./starwars/models/test.pt
   save_path: ./starwars/models/test.pt
   d_model: 256
   nhead: 4

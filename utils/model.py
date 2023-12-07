@@ -6,6 +6,21 @@ import math
 
 UNK_ID, SOS_ID, EOS_ID, PAD_ID = 0, 1, 2, 3
 
+class WeightedCrossEntropyLoss(nn.Module):
+    def forward(self, input, target, alpha = 1):
+        batch_size = input.size(0)
+        seq_len = input.size(1)
+
+        input = input.flatten(0, 1)
+        target = target.flatten()
+
+        loss = F.cross_entropy(input, target, reduction='none')
+        loss = loss.reshape(batch_size, seq_len)
+
+        weights = (alpha ** torch.arange(0, seq_len)).view(1, -1)
+
+        return (loss * weights).sum() / (weights.sum() * batch_size)
+
 class StraightThroughSample(torch.autograd.Function):
     @staticmethod
     def forward(ctx, softmax):

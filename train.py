@@ -13,7 +13,7 @@ from tqdm import tqdm
 # use notebook tailored progress bars when in Jupyter
 # from tqdm.notebook import tqdm
 
-from utils.model import TransformerEncoder, Transformer, Autoencoder
+from utils.model import TransformerEncoder, Transformer, Autoencoder, WeightedCrossEntropyLoss
 
 UNK_ID, SOS_ID, EOS_ID, PAD_ID = 0, 1, 2, 3
 
@@ -68,7 +68,7 @@ model = Autoencoder(
 if 'load_path' in config['model']:
     model.load_state_dict(torch.load(config['model']['load_path'], map_location=device))
 
-criterion = nn.CrossEntropyLoss()
+criterion = WeightedCrossEntropyLoss()
 optimizer = optim.Adam(
     model.parameters(),
     lr = config['train']['lr'],
@@ -97,7 +97,6 @@ for epoch in range(config['train']['epochs']):
         src_one_hot = F.one_hot(src, input_vocab_size).float().to(device)
 
         output = model(src_one_hot)
-        output = output.transpose(1, 2)
 
         src = src[:, 1:]
         loss = criterion(output, src)
@@ -106,7 +105,7 @@ for epoch in range(config['train']['epochs']):
         optimizer.step()
         optimizer.zero_grad()
 
-        accuracy = ((torch.argmax(output, dim = 1) == src) * (src != PAD_ID)).sum() / (src != PAD_ID).sum()
+        accuracy = ((torch.argmax(output, dim=-1) == src) * (src != PAD_ID)).sum() / (src != PAD_ID).sum()
 
         train_loss_log.set_description_str(f'Train loss: {loss.item():.4f}, '
             f'Train accuracy: {accuracy:.4f}')
