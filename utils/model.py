@@ -82,7 +82,45 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         return x + self.positional_encoding[:, :x.size(1), :]
 
-class TransformerEncoder(nn.Module):
+class Encoder(nn.Module):
+    def __init__(
+        self,
+        input_vocab_size,
+        input_embed,
+        d_model,
+        nhead,
+        num_layers,
+        dim_feedforward,
+        dropout,
+    ):
+        super().__init__()
+
+        self.input_vocab_size = input_vocab_size
+
+        self.d_model = d_model
+
+        self.input_embed = input_embed
+        self.position_encoder = PositionalEncoding(d_model)
+
+        self.encoder_layer = nn.TransformerEncoderLayer(
+            d_model = d_model,
+            nhead = nhead,
+            dim_feedforward = dim_feedforward,
+            dropout = dropout,
+            batch_first = True,
+        )
+        self.encoder = nn.TransformerEncoder(
+            encoder_layer = self.encoder_layer,
+            num_layers = num_layers,
+        )
+
+    def forward(self, src):
+        src = self.input_embed(src) * math.sqrt(self.d_model)
+        src = self.position_encoder(src)
+        output = self.encoder(src)
+        return output
+
+class TokenizedEncoder(Encoder):
     def __init__(
         self,
         input_vocab_size,
@@ -95,87 +133,70 @@ class TransformerEncoder(nn.Module):
         dim_feedforward,
         dropout,
     ):
-        super().__init__()
+        super().__init__(
+            input_vocab_size,
+            input_embed,
+            d_model,
+            nhead,
+            num_layers,
+            dim_feedforward,
+            dropout,
+        )
 
-        self.input_vocab_size = input_vocab_size
-        self.output_vocab_size = output_vocab_size
+        self.lin = nn.Linear(d_model, output_vocab_size)
         self.output_len = output_len
 
-        self.input_embed = input_embed
-
-        self.d_model = d_model
-        self.position_encoder = PositionalEncoding(d_model)
-        self.layer_norm = nn.LayerNorm(d_model)
-        self.encoder_layer = nn.TransformerEncoderLayer(
-            d_model = d_model,
-            nhead = nhead,
-            dim_feedforward = dim_feedforward,
-            dropout = dropout,
-            batch_first = True,
-        )
-        self.encoder = nn.TransformerEncoder(
-            encoder_layer = self.encoder_layer,
-            num_layers = num_layers,
-        )
-        self.lin = nn.Linear(d_model, output_vocab_size)
-
     def forward(self, src):
-        src = self.input_embed(src) * math.sqrt(self.d_model)
-        src = self.position_encoder(src)
-        src = self.layer_norm(src)
+        if src.size(1) < self.output_len:
+            padding = torch.full((src.size(0), self.output_len - src.size(1)), PAD_ID, device = src.device)
+            src = torch.cat((src, padding), dim = 1)
 
-        output = self.encoder(src)[:, :self.output_len, :]
+        output = super().forward(src)
+        output = output[:, :self.output_len, :]
         output = self.lin(output)
-
         return output
 
-class Transformer(nn.Module):
+class Decoder(nn.Module):
     def __init__(
         self,
-        input_vocab_size,
         output_vocab_size,
-        input_embed,
         output_embed,
         d_model,
         nhead,
-        num_encoder_layers,
-        num_decoder_layers,
+        num_layers,
         dim_feedforward,
         dropout,
     ):
         super().__init__()
 
-        self.input_vocab_size = input_vocab_size
         self.output_vocab_size = output_vocab_size
-
-        self.input_embed = input_embed
-        self.output_embed = output_embed
-
         self.d_model = d_model
-        self.transformer = nn.Transformer(
+
+        self.output_embed = output_embed
+        self.position_encoder = PositionalEncoding(d_model)
+
+        self.decoder_layer = nn.TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
-            num_encoder_layers = num_encoder_layers,
-            num_decoder_layers = num_decoder_layers,
             dim_feedforward = dim_feedforward,
             dropout = dropout,
             batch_first = True,
         )
+        self.decoder = nn.TransformerDecoder(
+            decoder_layer = self.decoder_layer,
+            num_layers = num_layers,
+        )
+
         self.lin = nn.Linear(d_model, output_vocab_size)
-
-        self.position_encoder = PositionalEncoding(d_model)
     
-    def forward(self, src, tgt):
-        src = self.input_embed(src) * math.sqrt(self.d_model)
-        tgt = self.output_embed(tgt) * math.sqrt(self.d_model)
-        src = self.position_encoder(src)
-        tgt = self.position_encoder(tgt)
-
+    def forward(self, tgt, memory):
         tgt_mask = self.get_tgt_mask(tgt.size(1))
 
-        output = self.transformer(src, tgt, tgt_mask = tgt_mask)
-        output = self.lin(output)
+        tgt = self.output_embed(tgt) * math.sqrt(self.d_model)
+        tgt = self.position_encoder(tgt)
 
+        output = self.decoder(tgt, memory, tgt_mask = tgt_mask)
+        output = self.lin(output)
         return output
 
     def get_tgt_mask(self, seq_len):
@@ -185,29 +206,89 @@ class Transformer(nn.Module):
         return mask
 
 class Autoencoder(nn.Module):
-    def __init__(self, encoder, decoder, temperature, discrete):
+    def __init__(self,
+        input_vocab_size,
+        output_vocab_size,
+        output_len,
+        d_model,
+        nhead,
+        num_encoder_layers,
+        num_decoder_layers,
+        dim_feedforward,
+        temperature,
+        dropout,
+        discrete,
+        skip = 1,
+    ):
         super().__init__()
-        self.temperature = temperature
-        self.encoder = encoder
-        self.decoder = decoder
+
+        self.input_embed = nn.Linear(input_vocab_size, d_model, bias = False)
+        self.output_embed = nn.Linear(output_vocab_size, d_model, bias = False)
+
+        self.src_to_con = TokenizedEncoder(
+            input_vocab_size,
+            output_vocab_size,
+            output_len,
+            self.input_embed,
+            d_model,
+            nhead,
+            num_encoder_layers,
+            dim_feedforward,
+            dropout,
+        )
+
+        self.con_to_vec = Encoder(
+            output_vocab_size,
+            self.output_embed,
+            d_model,
+            nhead,
+            num_encoder_layers,
+            dim_feedforward,
+            dropout,
+        )
+
+        self.src_to_vec = Encoder(
+            input_vocab_size,
+            self.input_embed,
+            d_model,
+            nhead,
+            num_encoder_layers,
+            dim_feedforward,
+            dropout,
+        )
+
+        self.vec_to_src = Decoder(
+            input_vocab_size,
+            self.input_embed,
+            d_model,
+            nhead,
+            num_decoder_layers,
+            dim_feedforward,
+            dropout,
+        )
+
         self.softmax = GumbelSoftmax(temperature, discrete)
+        self.temperature = temperature
+        self.skip = 1
 
     def forward(self, src):
-        logits = self.encoder(src)
-        tokens = self.softmax(logits)
-        return self.decoder(tokens, src[:, :-1])
+        con_logits = self.src_to_con(src)
+        con = self.softmax(con_logits)
+        con_vec = self.con_to_vec(con)
+
+        src_vec = self.src_to_vec(src)
+        src_vec_dropout = torch.full_like(src_vec[:, :, :1], self.skip).bernoulli()
+        src_vec = src_vec * src_vec_dropout
+        
+        vec = torch.cat((con_vec, src_vec), dim = 1)
+
+        return self.vec_to_src(src[:, :-1], vec)
 
     def translate(self, src):
         assert not self.training
-        logits = self.encoder(src)
-        tokens = self.softmax(logits)
-        return torch.argmax(tokens, dim = -1)
+        con_logits = self.src_to_con(src)
+        con = self.softmax(con_logits)
+        return torch.argmax(con, dim = -1)
 
     def backtranslate(self, seq, length):
-        tokens = torch.full((seq.size(0), 1), SOS_ID, device = seq.device)
-        for _ in range(length - 1):
-            tokens_one_hot = F.one_hot(tokens, self.decoder.output_vocab_size).float()
-            results = self.decoder(seq, tokens_one_hot)[:, -1, :] / self.temperature
-            samples = torch.multinomial(torch.softmax(results, dim = -1), num_samples = 1)
-            tokens = torch.cat((tokens, samples), dim = 1)
-        return tokens
+        raise NotImplementedError
