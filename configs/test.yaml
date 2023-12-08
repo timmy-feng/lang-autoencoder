@@ -16,12 +16,12 @@ model:
   num_decoder_layers: 3
   dim_feedforward: 512
 train:
-  lr: 0.0001
+  lr: 0.001
   weight_decay: 0.0001
   dropout: 0.1
-  discrete: False
+  discrete: True
   batch_size: 256
-  epochs: 256
+  epochs: 150
   clip_grad_norm: 1.0
   temperature: 1.0
 predict:

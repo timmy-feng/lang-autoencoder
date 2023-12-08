@@ -2,24 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .transformer import TransformerDecoderLayer, TransformerEncoderLayer
+
 import math
 
 UNK_ID, SOS_ID, EOS_ID, PAD_ID = 0, 1, 2, 3
-
-class WeightedCrossEntropyLoss(nn.Module):
-    def forward(self, input, target, alpha = 1):
-        batch_size = input.size(0)
-        seq_len = input.size(1)
-
-        input = input.flatten(0, 1)
-        target = target.flatten()
-
-        loss = F.cross_entropy(input, target, reduction='none')
-        loss = loss.reshape(batch_size, seq_len)
-
-        weights = (alpha ** torch.arange(0, seq_len)).view(1, -1)
-
-        return (loss * weights).sum() / (weights.sum() * batch_size)
 
 class StraightThroughSample(torch.autograd.Function):
     @staticmethod
@@ -102,7 +89,9 @@ class Encoder(nn.Module):
         self.input_embed = input_embed
         self.position_encoder = PositionalEncoding(d_model)
 
-        self.encoder_layer = nn.TransformerEncoderLayer(
+        self.layer_norm = nn.LayerNorm(d_model)
+
+        self.encoder_layer = TransformerEncoderLayer(
             d_model = d_model,
             nhead = nhead,
             dim_feedforward = dim_feedforward,
@@ -117,6 +106,7 @@ class Encoder(nn.Module):
     def forward(self, src):
         src = self.input_embed(src) * math.sqrt(self.d_model)
         src = self.position_encoder(src)
+        src = self.layer_norm(src)
         output = self.encoder(src)
         return output
 
@@ -175,7 +165,9 @@ class Decoder(nn.Module):
         self.output_embed = output_embed
         self.position_encoder = PositionalEncoding(d_model)
 
-        self.decoder_layer = nn.TransformerDecoderLayer(
+        self.layer_norm = nn.LayerNorm(d_model)
+
+        self.decoder_layer = TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
             dim_feedforward = dim_feedforward,
@@ -194,6 +186,7 @@ class Decoder(nn.Module):
 
         tgt = self.output_embed(tgt) * math.sqrt(self.d_model)
         tgt = self.position_encoder(tgt)
+        tgt = self.layer_norm(tgt)
 
         output = self.decoder(tgt, memory, tgt_mask = tgt_mask, memory_mask = memory_mask)
         output = self.lin(output)

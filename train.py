@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 
 import argparse
 import yaml
+import math
 import os
 
 from tqdm import tqdm
@@ -67,7 +68,7 @@ for epoch in range(num_epochs):
     progress_bar.write(f'Epoch {epoch + 1}')
 
     model.train()
-    model.skip = 1 - epoch / num_epochs
+    model.skip = 1 / (1 + math.exp(epoch - num_epochs / 2))
 
     for src, in train_loader:
         src = src[:, :input_len].to(device)
