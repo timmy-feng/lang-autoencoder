@@ -222,6 +222,8 @@ class Autoencoder(nn.Module):
     ):
         super().__init__()
 
+        self.input_vocab_size = input_vocab_size
+
         self.input_embed = nn.Linear(input_vocab_size, d_model, bias = False)
         self.output_embed = nn.Linear(output_vocab_size, d_model, bias = False)
 
@@ -286,9 +288,19 @@ class Autoencoder(nn.Module):
 
     def translate(self, src):
         assert not self.training
+
         con_logits = self.src_to_con(src)
         con = self.softmax(con_logits)
         return torch.argmax(con, dim = -1)
 
     def backtranslate(self, seq, length):
-        raise NotImplementedError
+        assert not self.training
+
+        vec = self.con_to_vec(seq)
+        tokens = torch.full((seq.size(0), 1), SOS_ID, device = seq.device)
+        for _ in range(length - 1):
+            tokens_one_hot = F.one_hot(tokens, self.input_vocab_size).float()
+            results = self.vec_to_src(tokens_one_hot, vec)[:, -1, :] / self.temperature
+            samples = torch.multinomial(torch.softmax(results, dim = -1), num_samples = 1)
+            tokens = torch.cat((tokens, samples), dim = 1)
+        return tokens
