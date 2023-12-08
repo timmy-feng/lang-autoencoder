@@ -26,3 +26,4 @@ train:
   temperature: 1.0
 predict:
   tokenizer: ./starwars/datasets/complete/tokenizer.model
+  temperature: 1.0

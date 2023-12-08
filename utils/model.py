@@ -189,13 +189,13 @@ class Decoder(nn.Module):
 
         self.lin = nn.Linear(d_model, output_vocab_size)
     
-    def forward(self, tgt, memory):
+    def forward(self, tgt, memory, memory_mask = None):
         tgt_mask = self.get_tgt_mask(tgt.size(1))
 
         tgt = self.output_embed(tgt) * math.sqrt(self.d_model)
         tgt = self.position_encoder(tgt)
 
-        output = self.decoder(tgt, memory, tgt_mask = tgt_mask)
+        output = self.decoder(tgt, memory, tgt_mask = tgt_mask, memory_mask = memory_mask)
         output = self.lin(output)
         return output
 
@@ -223,6 +223,7 @@ class Autoencoder(nn.Module):
         super().__init__()
 
         self.input_vocab_size = input_vocab_size
+        self.output_len = output_len
 
         self.input_embed = nn.Linear(input_vocab_size, d_model, bias = False)
         self.output_embed = nn.Linear(output_vocab_size, d_model, bias = False)
@@ -276,15 +277,17 @@ class Autoencoder(nn.Module):
     def forward(self, src):
         con_logits = self.src_to_con(src)
         con = self.softmax(con_logits)
+
         con_vec = self.con_to_vec(con)
+        con_vec_mask = torch.full((src.size(1) - 1, self.output_len), False, device = src.device)
 
         src_vec = self.src_to_vec(src)
-        src_vec_dropout = torch.full_like(src_vec[:, :, :1], self.skip).bernoulli()
-        src_vec = src_vec * src_vec_dropout
-        
-        vec = torch.cat((con_vec, src_vec), dim = 1)
+        src_vec_mask = torch.rand((src.size(1) - 1, src.size(1)), device = src.device) > self.skip
 
-        return self.vec_to_src(src[:, :-1], vec)
+        vec = torch.cat((con_vec, src_vec), dim = 1)
+        memory_mask = torch.cat((con_vec_mask, src_vec_mask), dim = 1)
+
+        return self.vec_to_src(src[:, :-1], vec, memory_mask)
 
     def translate(self, src):
         assert not self.training
