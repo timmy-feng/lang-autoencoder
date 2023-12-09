@@ -73,7 +73,9 @@ class Encoder(nn.Module):
     def __init__(
         self,
         input_vocab_size,
+        output_vocab_size,
         input_embed,
+        output_len,
         d_model,
         nhead,
         num_layers,
@@ -83,6 +85,7 @@ class Encoder(nn.Module):
         super().__init__()
 
         self.input_vocab_size = input_vocab_size
+        self.output_len = output_len
 
         self.d_model = d_model
 
@@ -103,47 +106,21 @@ class Encoder(nn.Module):
             num_layers = num_layers,
         )
 
-    def forward(self, src):
-        src = self.input_embed(src) * math.sqrt(self.d_model)
-        src = self.position_encoder(src)
-        src = self.layer_norm(src)
-        output = self.encoder(src)
-        return output
-
-class Decoder(Encoder):
-    def __init__(
-        self,
-        input_vocab_size,
-        output_vocab_size,
-        output_len,
-        input_embed,
-        d_model,
-        nhead,
-        num_layers,
-        dim_feedforward,
-        dropout,
-    ):
-        super().__init__(
-            input_vocab_size,
-            input_embed,
-            d_model,
-            nhead,
-            num_layers,
-            dim_feedforward,
-            dropout,
-        )
-
         self.lin = nn.Linear(d_model, output_vocab_size)
-        self.output_len = output_len
 
     def forward(self, src):
         if src.size(1) < self.output_len:
             padding = torch.full((src.size(0), self.output_len - src.size(1)), PAD_ID, device = src.device)
             src = torch.cat((src, padding), dim = 1)
 
-        output = super().forward(src)
+        src = self.input_embed(src) * math.sqrt(self.d_model)
+        src = self.position_encoder(src)
+        src = self.layer_norm(src)
+
+        output = self.encoder(src)
         output = output[:, :self.output_len, :]
         output = self.lin(output)
+
         return output
 
 class Autoencoder(nn.Module):
@@ -168,11 +145,11 @@ class Autoencoder(nn.Module):
         self.input_embed = nn.Linear(input_vocab_size, d_model, bias = False)
         self.output_embed = nn.Linear(output_vocab_size, d_model, bias = False)
 
-        self.src_to_con = Decoder(
+        self.src_to_con = Encoder(
             input_vocab_size,
             output_vocab_size,
-            output_len,
             self.input_embed,
+            output_len,
             d_model,
             nhead,
             num_layers,
@@ -180,11 +157,11 @@ class Autoencoder(nn.Module):
             dropout,
         )
 
-        self.con_to_src = Decoder(
+        self.con_to_src = Encoder(
             output_vocab_size,
             input_vocab_size,
-            input_len,
             self.output_embed,
+            input_len,
             d_model,
             nhead,
             num_layers,
@@ -194,7 +171,6 @@ class Autoencoder(nn.Module):
 
         self.softmax = GumbelSoftmax(temperature, discrete)
         self.temperature = temperature
-        self.skip = 1
 
     def forward(self, src):
         con_logits = self.src_to_con(src)
@@ -209,7 +185,7 @@ class Autoencoder(nn.Module):
         con = self.softmax(con_logits)
         return torch.argmax(con, dim = -1)
 
-    def backtranslate(self, seq, length):
+    def backtranslate(self, seq):
         assert not self.training
 
         src_logits = self.con_to_src(seq)

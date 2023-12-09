@@ -9,7 +9,6 @@ dataset:
   train: ./conversation/datasets/train.pt
   val: ./conversation/datasets/val.pt
 model:
-  load_path: ./conversation/models/test.pt
   save_path: ./conversation/models/test.pt
   d_model: 32
   nhead: 4
