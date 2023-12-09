@@ -1,0 +1,30 @@
+lang:
+  input:
+    vocab_size: 256
+    seq_len: 32
+  output:
+    vocab_size: 256
+    seq_len: 32
+dataset:
+  train: ./conversation/datasets/train.pt
+  val: ./conversation/datasets/val.pt
+model:
+  load_path: ./conversation/models/test.pt
+  save_path: ./conversation/models/test.pt
+  d_model: 32
+  nhead: 4
+  num_encoder_layers: 3
+  num_decoder_layers: 3
+  dim_feedforward: 128
+train:
+  lr: 0.001
+  weight_decay: 0.0001
+  dropout: 0.1
+  discrete: False
+  batch_size: 16
+  epochs: 100
+  clip_grad_norm: 1.0
+  temperature: 1.0
+predict:
+  tokenizer: ./conversation/datasets/tokenizer.model
+  temperature: 0.1

@@ -31,11 +31,11 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = Autoencoder(
     input_vocab_size = config['lang']['input']['vocab_size'],
     output_vocab_size = config['lang']['output']['vocab_size'],
+    input_len = config['lang']['input']['seq_len'],
     output_len = config['lang']['output']['seq_len'],
     d_model = config['model']['d_model'],
     nhead = config['model']['nhead'],
-    num_encoder_layers = config['model']['num_encoder_layers'],
-    num_decoder_layers = config['model']['num_encoder_layers'],
+    num_layers = config['model']['num_encoder_layers'],
     dim_feedforward = config['model']['dim_feedforward'],
     dropout = config['train']['dropout'],
     discrete = config['train']['discrete'],
@@ -46,6 +46,7 @@ if 'load_path' in config['model']:
     model.load_state_dict(torch.load(config['model']['load_path'], map_location=device))
 
 criterion = nn.CrossEntropyLoss()
+
 optimizer = optim.Adam(
     model.parameters(),
     lr = config['train']['lr'],
@@ -68,7 +69,6 @@ for epoch in range(num_epochs):
     progress_bar.write(f'Epoch {epoch + 1}')
 
     model.train()
-    model.skip = 1 / (1 + math.exp(epoch - num_epochs / 2))
 
     for src, in train_loader:
         src = src[:, :input_len].to(device)
@@ -77,7 +77,6 @@ for epoch in range(num_epochs):
         output = model(src_one_hot)
         output = output.transpose(1, 2)
 
-        src = src[:, 1:]
         loss = criterion(output, src)
 
         loss.backward()
@@ -103,7 +102,6 @@ for epoch in range(num_epochs):
         output = model(src_one_hot)
         output = output.transpose(1, 2)
 
-        src = src[:, 1:]
         loss = criterion(output, src)
 
         total_loss += loss.detach().item() * src.size(0)

@@ -26,6 +26,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = Autoencoder(
     input_vocab_size = config['lang']['input']['vocab_size'],
     output_vocab_size = config['lang']['output']['vocab_size'],
+    input_len = config['lang']['input']['seq_len'],
     output_len = config['lang']['output']['seq_len'],
     d_model = config['model']['d_model'],
     nhead = config['model']['nhead'],

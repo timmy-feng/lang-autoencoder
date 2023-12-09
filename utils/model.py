@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .transformer import TransformerDecoderLayer, TransformerEncoderLayer
+from .transformer import TransformerEncoderLayer
 
 import math
 
@@ -110,7 +110,7 @@ class Encoder(nn.Module):
         output = self.encoder(src)
         return output
 
-class TokenizedEncoder(Encoder):
+class Decoder(Encoder):
     def __init__(
         self,
         input_vocab_size,
@@ -146,72 +146,19 @@ class TokenizedEncoder(Encoder):
         output = self.lin(output)
         return output
 
-class Decoder(nn.Module):
-    def __init__(
-        self,
-        output_vocab_size,
-        output_embed,
-        d_model,
-        nhead,
-        num_layers,
-        dim_feedforward,
-        dropout,
-    ):
-        super().__init__()
-
-        self.output_vocab_size = output_vocab_size
-        self.d_model = d_model
-
-        self.output_embed = output_embed
-        self.position_encoder = PositionalEncoding(d_model)
-
-        self.layer_norm = nn.LayerNorm(d_model)
-
-        self.decoder_layer = TransformerDecoderLayer(
-            d_model = d_model,
-            nhead = nhead,
-            dim_feedforward = dim_feedforward,
-            dropout = dropout,
-            batch_first = True,
-        )
-        self.decoder = nn.TransformerDecoder(
-            decoder_layer = self.decoder_layer,
-            num_layers = num_layers,
-        )
-
-        self.lin = nn.Linear(d_model, output_vocab_size)
-    
-    def forward(self, tgt, memory, memory_mask = None):
-        tgt_mask = self.get_tgt_mask(tgt.size(1))
-
-        tgt = self.output_embed(tgt) * math.sqrt(self.d_model)
-        tgt = self.position_encoder(tgt)
-        tgt = self.layer_norm(tgt)
-
-        output = self.decoder(tgt, memory, tgt_mask = tgt_mask, memory_mask = memory_mask)
-        output = self.lin(output)
-        return output
-
-    def get_tgt_mask(self, seq_len):
-        mask = torch.tril(torch.ones(seq_len, seq_len)).float()
-        mask = mask.masked_fill(mask == 0, float('-inf'))
-        mask = mask.masked_fill(mask == 1, 0.0)
-        return mask
-
 class Autoencoder(nn.Module):
     def __init__(self,
         input_vocab_size,
         output_vocab_size,
+        input_len,
         output_len,
         d_model,
         nhead,
-        num_encoder_layers,
-        num_decoder_layers,
+        num_layers,
         dim_feedforward,
         temperature,
         dropout,
         discrete,
-        skip = 1,
     ):
         super().__init__()
 
@@ -221,44 +168,26 @@ class Autoencoder(nn.Module):
         self.input_embed = nn.Linear(input_vocab_size, d_model, bias = False)
         self.output_embed = nn.Linear(output_vocab_size, d_model, bias = False)
 
-        self.src_to_con = TokenizedEncoder(
+        self.src_to_con = Decoder(
             input_vocab_size,
             output_vocab_size,
             output_len,
             self.input_embed,
             d_model,
             nhead,
-            num_encoder_layers,
+            num_layers,
             dim_feedforward,
             dropout,
         )
 
-        self.con_to_vec = Encoder(
+        self.con_to_src = Decoder(
             output_vocab_size,
+            input_vocab_size,
+            input_len,
             self.output_embed,
             d_model,
             nhead,
-            num_encoder_layers,
-            dim_feedforward,
-            dropout,
-        )
-
-        self.src_to_vec = Encoder(
-            input_vocab_size,
-            self.input_embed,
-            d_model,
-            nhead,
-            num_encoder_layers,
-            dim_feedforward,
-            dropout,
-        )
-
-        self.vec_to_src = Decoder(
-            input_vocab_size,
-            self.input_embed,
-            d_model,
-            nhead,
-            num_decoder_layers,
+            num_layers,
             dim_feedforward,
             dropout,
         )
@@ -270,17 +199,8 @@ class Autoencoder(nn.Module):
     def forward(self, src):
         con_logits = self.src_to_con(src)
         con = self.softmax(con_logits)
-
-        con_vec = self.con_to_vec(con)
-        con_vec_mask = torch.full((src.size(1) - 1, self.output_len), False, device = src.device)
-
-        src_vec = self.src_to_vec(src)
-        src_vec_mask = torch.rand((src.size(1) - 1, src.size(1)), device = src.device) > self.skip
-
-        vec = torch.cat((con_vec, src_vec), dim = 1)
-        memory_mask = torch.cat((con_vec_mask, src_vec_mask), dim = 1)
-
-        return self.vec_to_src(src[:, :-1], vec, memory_mask)
+        src_logits = self.con_to_src(con)
+        return src_logits
 
     def translate(self, src):
         assert not self.training
@@ -292,11 +212,5 @@ class Autoencoder(nn.Module):
     def backtranslate(self, seq, length):
         assert not self.training
 
-        vec = self.con_to_vec(seq)
-        tokens = torch.full((seq.size(0), 1), SOS_ID, device = seq.device)
-        for _ in range(length - 1):
-            tokens_one_hot = F.one_hot(tokens, self.input_vocab_size).float()
-            results = self.vec_to_src(tokens_one_hot, vec)[:, -1, :] / self.temperature
-            samples = torch.multinomial(torch.softmax(results, dim = -1), num_samples = 1)
-            tokens = torch.cat((tokens, samples), dim = 1)
-        return tokens
+        src_logits = self.con_to_src(seq)
+        return torch.argmax(src_logits, dim = -1)
