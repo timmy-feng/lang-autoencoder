@@ -78,7 +78,7 @@ while True:
 
     translation = model.translate(src)
     translation_one_hot = F.one_hot(translation, output_vocab_size).float()
-    backtranslation = model.backtranslate(translation_one_hot, input_len)
+    backtranslation = model.backtranslate(translation_one_hot)
 
     if outputs['tokenized']:
         print(f'Tokenized: ', end = '')

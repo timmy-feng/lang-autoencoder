@@ -110,7 +110,8 @@ class Encoder(nn.Module):
 
     def forward(self, src):
         if src.size(1) < self.output_len:
-            padding = torch.full((src.size(0), self.output_len - src.size(1)), PAD_ID, device = src.device)
+            padding = torch.zeros((src.size(0), self.output_len - src.size(1), self.input_vocab_size), device = src.device)
+            padding[:, :, PAD_ID] = 1
             src = torch.cat((src, padding), dim = 1)
 
         src = self.input_embed(src) * math.sqrt(self.d_model)

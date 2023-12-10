@@ -44,6 +44,7 @@ model = Autoencoder(
 
 if 'load_path' in config['model']:
     model.load_state_dict(torch.load(config['model']['load_path'], map_location=device))
+    print('Model loaded from ' + config["model"]["load_path"])
 
 criterion = nn.CrossEntropyLoss()
 
@@ -57,6 +58,10 @@ train_dataset = torch.load(config['dataset']['train'])
 val_dataset = torch.load(config['dataset']['val'])
 train_loader = DataLoader(train_dataset, batch_size = config['train']['batch_size'], shuffle = True)
 val_loader = DataLoader(val_dataset, batch_size = config['train']['batch_size'])
+
+if 'test' in config['dataset']:
+    test_dataset = torch.load(config['dataset']['test'])
+    test_loader = DataLoader(test_dataset, batch_size = config['train']['batch_size'])
 
 model.to(device)
 torch.nn.utils.clip_grad_norm_(model.parameters(), config['train']['clip_grad_norm'])
@@ -111,6 +116,26 @@ for epoch in range(num_epochs):
 
     print(f'Val loss: {(total_loss / total_samples):.4f}, '
         f'Val accuracy: {(total_matches / total_tokens):.4f}')
+    print()
+
+if 'test' in config['dataset']:
+    total_loss, total_samples, total_matches, total_tokens = 0, 0, 0, 0
+    for src, in test_loader:
+        src = src[:, :input_len].to(device)
+        src_one_hot = F.one_hot(src, input_vocab_size).float().to(device)
+
+        output = model(src_one_hot)
+        output = output.transpose(1, 2)
+
+        loss = criterion(output, src)
+
+        total_loss += loss.detach().item() * src.size(0)
+        total_samples += src.size(0)
+        total_matches += ((torch.argmax(output, dim = 1) == src) * (src != PAD_ID)).sum()
+        total_tokens += (src != PAD_ID).sum()
+
+    print(f'Train loss: {(total_loss / total_samples):.4f}, '
+        f'Train accuracy: {(total_matches / total_tokens):.4f}')
     print()
     
 save_path = config['model']['save_path']
